@@ -349,12 +349,21 @@ class OBJ_vbo(OBJ):
 			self.vbo_t.delete()
 		OBJ.__del__(self)
 
+def LOG(img,i):
+	if img is None:
+		print ('img ',i, 'is None')
+
+from collections import deque
 class Render():
+	crt_poses = deque([]) # correct pose
+	buffer_glframes = deque([])
+	current_frame = None
+	gaussian = np.array([7, 26, 41, 26, 7])
 	def __init__(self):
 		self.Poses = []
 		self.count = 0
 		import pickle
-		self.crt_poses = None
+		# self.crt_poses = None
 		# self.crt_poses = pickle.load(open('newPoses.pickle', "rb"))
 
 		from pygame import locals
@@ -390,8 +399,7 @@ class Render():
 
 		self.FM = face_pose_class.FacePose('./models')
 
-
-	def draw(self,im):
+	def draw(self,im, index, frame_num):
 		if im is not None:
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 			glLoadIdentity()
@@ -404,10 +412,10 @@ class Render():
 
 			Pitch, Yaw, Roll = self.FM.predictImage(im)
 
-
 			if Pitch is not None:
+				self.count += 1
 				self.Poses.append([Pitch, Yaw, Roll])
-
+				self.crt_poses.append([Pitch, Yaw, Roll])
 				# A = np.array([0.,0.09,0.14])
 				# O = np.array([0.,0.,0.])
 				# O1 = np.array([0.,0.115,0.])
@@ -426,48 +434,101 @@ class Render():
 				# self.pitch = Pitch*r
 				# self.yaw = Yaw*r
 				# self.roll = Roll*r
-				if self.crt_poses is not None:
-					self.pitch = self.crt_poses[self.count][0] * r
-					self.yaw = self.crt_poses[self.count][1] * r
-					self.roll = self.crt_poses[self.count][2] * r
+				if index < 4:
+					if index < 2:
+						pose = self.crt_poses[index]
+						oglout = self.DrawTails(pose,r, index, frame_num)
+						if oglout is not None:
+							self.current_frame = oglout
+						LOG(self.current_frame,1)
+						return self.current_frame
+
+					LOG(self.current_frame, 2)
+					return self.current_frame
+				elif index == frame_num - 2:
+					for i in range(2):
+						pose = self.crt_poses[4 - index]
+						oglout = self.DrawTails(pose,r, index, frame_num)
+						if oglout is not None:
+							self.current_frame = oglout
+						LOG(self.current_frame,3)
+						return self.current_frame
 				else:
-					self.pitch = Pitch*r
-					self.yaw = Yaw*r
-					self.roll = Roll*r
-				self.count+=1
+					pitch5 = [self.crt_poses[i][0] for i in range(self.crt_poses.__len__())]
+					yaw5 = [self.crt_poses[i][1] for i in range(self.crt_poses.__len__())]
+					roll5 = [self.crt_poses[i][2] for i in range(self.crt_poses.__len__())]
 
-			# # Take Care, different from opengl coordinary
-			glRotate(self.pitch, 1, 0, 0)  # x
-			glRotate(self.roll, 0, 1, 0)  # y
-			glRotate(self.yaw, 0, 0, 1)  # z
+					new_pitch = np.dot(self.gaussian, np.array(pitch5[0:5])) / 107
+					new_yaw = np.dot(self.gaussian, np.array(yaw5[0:5])) / 107
+					new_roll = np.dot(self.gaussian, np.array(roll5[0:5])) / 107
 
-			glTranslate(0.1, -0.3, -0.2)
-			glScale(2, 2, 2)
+					new_pose = [new_pitch, new_yaw, new_roll]
 
-			# glTranslate(0., -0.3, 0)
+					self.crt_poses.popleft()
+					self.crt_poses[1] = new_pose
 
-			self.obj.render()
+					oglout = self.DrawTails(new_pose, r, index, frame_num)
+					if oglout is not None:
+						self.current_frame = oglout
 
-			img_data_str = pygame.image.tostring(self.srf, 'RGB')
-			img_data_str = np.fromstring(img_data_str, dtype=np.uint8)
-			tmp = img_data_str.reshape(self.gl_height, self.gl_width, 3)
-			oglout = cv2.cvtColor(tmp, cv2.COLOR_RGB2BGR)
-			fname = "result.png"
-			cv2.imwrite(fname, oglout)
-			cv2.imshow('1', oglout)
-			cv2.waitKey(1)
-
-			return oglout
+					LOG(self.current_frame, 4)
+					return self.current_frame
+				# if self.crt_poses is not None:
+				# 	self.pitch = self.crt_poses[self.count][0] * r
+				# 	self.yaw = self.crt_poses[self.count][1] * r
+				# 	self.roll = self.crt_poses[self.count][2] * r
+				# else:
+				# 	self.pitch = Pitch * r
+				# 	self.yaw = Yaw * r
+				# 	self.roll = Roll * r
+			else:
+				LOG(self.current_frame, 6)
+				return self.current_frame
 		else:
 			print('im in def draw(self,im): is None!')
-			return None
+			LOG(self.current_frame, 5)
+			return self.current_frame
 
+	def DrawTails(self, pose, r, index, frame_num):
+		self.pitch = pose[0] * r
+		self.yaw = pose[1] * r
+		self.roll = pose[2] * r
+# # Take Care, different from opengl coordinary
+		glRotate(self.pitch, 1, 0, 0)  # x
+		glRotate(self.roll, 0, 1, 0)  # y
+		glRotate(self.yaw, 0, 0, 1)  # z
+
+		glTranslate(0.1, -0.3, -0.2)
+		glScale(2, 2, 2)
+
+		self.obj.render()
+
+		img_data_str = pygame.image.tostring(self.srf, 'RGB')
+		img_data_str = np.fromstring(img_data_str, dtype=np.uint8)
+		tmp = img_data_str.reshape(self.gl_height, self.gl_width, 3)
+		oglout = cv2.cvtColor(tmp, cv2.COLOR_RGB2BGR)
+		self.buffer_glframes.append(oglout)
+		if index<2:
+			self.buffer_glframes.popleft()
+			pass
+		elif index>3 and index<=frame_num-3:
+			oglout = self.buffer_glframes.popleft()
+		else:
+			self.buffer_glframes.popleft()
+
+		fname = "result.png"
+		cv2.imwrite(fname, oglout)
+		cv2.imshow('1', oglout)
+		cv2.waitKey(1)
+
+		if oglout is None:
+			print ('oglout is None!!!')
+		return oglout
 
 def render():
 	# from pygame.locals import *
 	# from pygame.constants import *
 	# from OpenGL.GLU import *
-
 	pygame.init()
 	gl_width = 800
 	gl_height = 600

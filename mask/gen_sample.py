@@ -13,10 +13,13 @@ class Mask:
         self.process_num = 0
 
     def save_pic(self, seg, ori):
+        mask = np.zeros_like(seg)
         rects, faces = self.cp.detect_facerect(ori)
-        index = 0
+
+
         # PS: check which face for swap
         if len(faces) >= 1:
+            index = 0
             for k, face in enumerate(faces):
                 score = self.cp.eval_dist(face, self.target_img)
                 if score < 1.0:
@@ -26,20 +29,24 @@ class Mask:
             # cv2.rectangle(ori, (roi[0], roi[1]), (roi[2], roi[3]), [0, 255, 255])
             # cv2.imshow("detect", ori)
             # cv2.waitKey(0)
-            mask = np.zeros_like(seg)
+
             # mask[(seg[:, :] == [0, 0, 128]).all(axis=2)] = 255
             # PS: color the region of interest
             mask[roi[1]:roi[3], roi[0]:roi[2]][(seg[roi[1]:roi[3], roi[0]:roi[2]] == [0, 0, 128]).all(axis=2)] = 255
             ori[roi[1]:roi[3], roi[0]:roi[2]][(seg[roi[1]:roi[3], roi[0]:roi[2]] == [0, 0, 128]).all(axis=2)] = 255
             # print(np.shape((seg[:, :] == [0, 0, 128]).all(axis=2)))
-            # [(seg[roi[0]:roi[2], roi[1]:roi[3]] == [0, 0, 128]).all(axis=2)]
+            # [(seg[:, :] == [0, 0, 128]).all(axis=2)]
             # cv2.imshow("test", ori)
-            cv2.imwrite("./dataset/background/%04d.jpg" % self.process_num, ori)
-            cv2.imwrite("./dataset/ROI/%04d.jpg" % self.process_num, mask)
-            cv2.waitKey(1)
+
         else:
             print("no face detected, skip")
+            mask[(seg[:, :] == [0, 0, 128]).all(axis=2)]=255
+            ori[(seg[:, :] == [0, 0, 128]).all(axis=2)]=255
             self.skip_count += 1
+
+        cv2.imwrite("./dataset/background/%04d.jpg" % self.process_num, ori)
+        cv2.imwrite("./dataset/ROI/%04d.jpg" % self.process_num, mask)
+        cv2.waitKey(1)
         self.process_num += 1
 
 
