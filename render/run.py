@@ -33,7 +33,8 @@ class Draw():
     buffer_alignedFace = deque([])
     buffer_final_area = deque([])
     buffer_bgFillImg = deque([])
-
+    buffer_recthero = deque([])
+    buffer_bg_rect_center = deque([])
     def draw_single(self, heroImg,bgOrgImg,bgFillImg,bgmask,clothmask, name, index, frame_num):
         '''
             Align the heroImg by 68 face features to fit the area.
@@ -82,34 +83,18 @@ class Draw():
         self.buffer_bgOrgImg.append(bgOrgImg)
         self.buffer_final_area.append(final_area)
         self.buffer_bgFillImg.append(bgFillImg)
+        self.buffer_bg_rect_center.append(bg_rect_center)
+        self.buffer_recthero.append(rect_hero)
         if index < 4:
             if index <2:
-                bgOrgImg = self.buffer_bgOrgImg.popleft()
-                alignedFace = self.buffer_alignedFace.popleft()
-                final_area = self.buffer_final_area.popleft()
-                bgFillImg = self.buffer_bgFillImg.popleft()
-                self.final_draw(bgOrgImg, alignedFace, final_area, bgFillImg, blend_name)
+                self.final_draw(blend_name)
             return
         elif index == frame_num-2:
             for i in range(2):
-                bgOrgImg = self.buffer_bgOrgImg.popleft()
-                alignedFace = self.buffer_alignedFace.popleft()
-                final_area = self.buffer_final_area.popleft()
-                bgFillImg = self.buffer_bgFillImg.popleft()
-                self.final_draw(bgOrgImg, alignedFace, final_area, bgFillImg, blend_name)
+                self.final_draw(blend_name)
         else:
-            bgOrgImg = self.buffer_bgOrgImg.popleft()
-            alignedFace = self.buffer_alignedFace.popleft()
-            final_area = self.buffer_final_area.popleft()
-            bgFillImg = self.buffer_bgFillImg.popleft()
-
-            correct_r = np.dot(self.gaussian,np.array(list(self.crt_ratios))[0:5])/107
-            self.crt_ratios.popleft()
-            scale_factor = np.sqrt(float(correct_r) / float(self.crt_ratios[1]))
-            self.crt_ratios[1] = correct_r
-            alignedFace = self.scaleAdjust(alignedFace, scale_factor,rect_hero,bg_rect_center)
-
-            self.final_draw(bgOrgImg, alignedFace, final_area, bgFillImg, blend_name)
+            self.final_draw(blend_name, True)
+            pass
 
 
     def rectPaste(self,alignedFace,rect_hero, bg_rect_center,half_w,half_h):
@@ -164,7 +149,22 @@ class Draw():
         nocloths = cv2.bitwise_and(cameraImg, clothsno)
         cv2.imshow('result', nocloths + cloths)
 
-    def final_draw(self,bgOrgImg, alignedFace, final_area, bgFillImg,blend_name):
+    def final_draw(self,blend_name, refine=False):
+        bgOrgImg = self.buffer_bgOrgImg.popleft()
+        alignedFace = self.buffer_alignedFace.popleft()
+        final_area = self.buffer_final_area.popleft()
+        bgFillImg = self.buffer_bgFillImg.popleft()
+        bg_rect_center = self.buffer_bg_rect_center.popleft()
+        rect_hero = self.buffer_recthero.popleft()
+        if refine is True:
+            correct_r = np.dot(self.gaussian, np.array(list(self.crt_ratios))[0:5]) / 107
+            self.crt_ratios.popleft()
+            # scale_factor = np.sqrt(float(correct_r) / float(self.crt_ratios[1]))
+            scale_factor = np.sqrt(float(self.crt_ratios[1]/float(correct_r)))
+
+            self.crt_ratios[1] = correct_r
+            alignedFace = self.scaleAdjust(alignedFace, scale_factor, rect_hero, bg_rect_center)
+
         renderedImg = render.ImageProcessing.colorTransfer(bgOrgImg, alignedFace, final_area)
 
         if renderedImg is None:
@@ -174,6 +174,7 @@ class Draw():
         cv2.imshow('renderedImg', renderedImg)
         cv2.imshow('out', cameraImg)
         cv2.imshow('src', bgOrgImg)
+        cv2.waitKey(1)
         cv2.imwrite(blend_name, cameraImg)
 
 def Go():
